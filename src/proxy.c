@@ -15,6 +15,14 @@
 
 int socket_connect(char *host, in_port_t port)
 {
+	/*
+	struct hostent
+	{
+	char *h_name;
+	int h_addrtype;
+	int h_length;
+	char **h_addr_list;
+	};*/
 	struct hostent *hp;
 	struct sockaddr_in addr;
 	int on = 1, sock;
@@ -24,9 +32,11 @@ int socket_connect(char *host, in_port_t port)
 		herror("gethostbyname");
 		exit(1);
 	}
+
 	bcopy(hp->h_addr, &addr.sin_addr, hp->h_length);
 	addr.sin_port = htons(port);
 	addr.sin_family = AF_INET;
+
 	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *)&on, sizeof(int));
 
@@ -63,7 +73,6 @@ int main(int argc, char *argv[])
 			char    sin_zero[8];
 	};
 	*/
-
 	struct sockaddr_in proxy_addr, client_addr, server_addr; // Socket地址
 	socklen_t client_len;									 // 用户地址长度
 	int n;													 // 请求长度
@@ -84,11 +93,12 @@ int main(int argc, char *argv[])
 	memset(&proxy_addr, 0, sizeof(proxy_addr));
 	proxy_port = atoi(argv[1]);
 	proxy_addr.sin_family = AF_INET;
-	proxy_addr.sin_port = htons(proxy_port);
+	proxy_addr.sin_port = htons(proxy_port); //设置监听端口
 
-	//INADDR_ANY是指的自己的IP地址
+	// INADDR_ANY是指的自己的IP地址
 	proxy_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
+	//绑定监听端口
 	if (bind(listenfd, (struct sockaddr *)&proxy_addr, sizeof(proxy_addr)) == -1)
 	{
 		perror("bind");
@@ -124,8 +134,10 @@ int main(int argc, char *argv[])
 	printf("接受一个连接来自 %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 	close(listenfd);
 
-	char buf[8192], server_host[2048];
+	char buf[8192], server_host[2048], server_path[2048], server_port[6];
 	int buflen = 8191;
+
+	//读取请求内容
 	while (1)
 	{
 		n = read(connfd, buf + strlen(buf), buflen);
@@ -134,6 +146,7 @@ int main(int argc, char *argv[])
 		{
 			break;
 		}
+		printf("So Far buf:\n%s\n", buf);
 	}
 
 	if (n < 0)
@@ -153,65 +166,50 @@ int main(int argc, char *argv[])
 	//如果请求不是get
 	if (strcmp(req->method, "GET"))
 	{
-		printf("未实现(501)\n");
+		printf("未实现 (501)\n");
 	}
 
-	// 3. Re-format the request to relative:
+	// 利用库解析请求体
 	ParsedHeader_set(req, "Host", req->host);
 	ParsedHeader_set(req, "Connection", "close");
+	// ParsedHeader_set(req,"Port",req->port);
+	int spportno=80;
+	// printf("%s\n",req->port);
+	
+	if(req->port!=NULL){
+		ParsedHeader_set(req, "Port", req->port);
+		strcpy(server_port, req->port);	
+		spportno = atoi(server_port);
+		req->port=NULL;
+	}
+
 	strcpy(server_host, req->host);
 	req->host = "";
 	req->protocol = "";
+
 	bzero(buf, 8192);
 	ParsedRequest_unparse(req, buf, 8192);
-	printf("The buffer is:\n%s", buf);
+	printf("收到请求：\n%s\n", buf);
 
-	// 4. Forward the request to the server:
-	// int spsockfd, spportno;
-	// struct sockaddr_in sp_addr;
-	// char ip_addr[1024];
-
-	// // opening the socket to the server:
-	// spsockfd = socket(AF_INET, SOCK_STREAM, 0);
-	// if(spsockfd < 0){
-	//   printf("Error in opening proxy socket to the server...\n");
-	//   return 0;
-	// }
-	// spportno = 80;
-
-	// // get the url address using the hostname:
-	// lookup_host(serv_host, ip_addr);
-	// printf("The host address is:\n%s\n", ip_addr);
-
-	// // initialize the proxy server address:
-	// bzero((char *) &sp_addr, sizeof(sp_addr));
-	// sp_addr.sin_family = AF_INET;
-	// sp_addr.sin_addr.s_addr = inet_addr(ip_addr);
-	// sp_addr.sin_port = htons(spportno);
-
-	// printf("The buffer length is: %ld\n", strlen(buf)+1);
-	// n = write(spsockfd, buf, strlen(buf)+1);
-	int spportno = 80;
+	// printf("%d",spportno);
 	int spfd = socket_connect(server_host, spportno);
 
-	write(spfd, buf, strlen(buf)); // write(fd, char[]*, len);
+	n=write(spfd, buf, strlen(buf)); // write(fd, char[]*, len);
 	if (n < 0)
 	{
 		printf("Error in sending message to url server...\n");
 		return 0;
 	}
-	else
-	{
-		// printf("Sent request to the server from proxy...\n");
-	}
 
-	// 5. Read the reply from the server:
 	bzero(buf, 8192);
 
 	while (read(spfd, buf, 8191) != 0)
 	{
-		// fprintf(stdout, "%s", buf);
 		write(connfd, buf, strlen(buf));
 		bzero(buf, 8192);
 	}
 }
+
+// GET http://chen.szkxy.net:8888/ HTTP/1.0
+// GET http://www.baidu.com:80/ HTTP/1.0
+// GET http://www.360.com/ HTTP/1.0
