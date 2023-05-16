@@ -22,5 +22,6 @@ make .
 ```
 telnet localhost 8080
 GET http://www.baidu.com/ HTTP/1.0
+SET http://www.baidu.com/ HTTP/1.0
 ```
 只支持get请求，其他请求会返回错误501

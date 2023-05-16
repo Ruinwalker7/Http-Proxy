@@ -9,24 +9,23 @@
 #include <netinet/tcp.h>
 #include <netdb.h>
 
-#define PROXY_PORT 8080				  //端口号
-#define SERVER_PORT 80				  //目标端口
-#define SERVER_ADDR "www.example.com" //访问地址
+#define SERVER_PORT 80 //目标端口
+
+int listenfd;
+void signINT(int SIGNAL)
+{
+
+	close(listenfd);
+	exit(SIGNAL);
+}
 
 int socket_connect(char *host, in_port_t port)
 {
-	/*
-	struct hostent
-	{
-	char *h_name;
-	int h_addrtype;
-	int h_length;
-	char **h_addr_list;
-	};*/
 	struct hostent *hp;
 	struct sockaddr_in addr;
 	int on = 1, sock;
 
+	// 通过网址获取ip地址
 	if ((hp = gethostbyname(host)) == NULL)
 	{
 		herror("gethostbyname");
@@ -62,26 +61,18 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	int listenfd, connfd, serverfd;
+	//监听端口，连接端口
+	int connfd;
 	int proxy_port;
 
-	/*
-	  struct sockaddr_in {
-			short   sin_family;
-			u_short sin_port;
-			struct  in_addr sin_addr;
-			char    sin_zero[8];
-	};
-	*/
-	struct sockaddr_in proxy_addr, client_addr, server_addr; // Socket地址
-	socklen_t client_len;									 // 用户地址长度
-	int n;													 // 请求长度
+	struct sockaddr_in proxy_addr, client_addr; // Socket地址
+	socklen_t client_len;						// 用户地址长度
+	int n;										// 请求长度
 
 	//建立一个监听socket
-	// AF_INET 使用象 192.9.200.10 这样被点号隔开的四个十进制数字的地址格式。
+	// AF_INET 使用像 192.9.200.10 这样被点号隔开的四个十进制数字的地址格式。
 	// sock_stream 是有保障的(即能保证数据正确传送到对方)面向连接的SOCKET，多用于资料(如文件)传送。
 	// sock_dgram 是无保障的面向消息的socket ， 主要用于在网络上发广播信息。
-
 	listenfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (listenfd == -1)
 	{
@@ -89,7 +80,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	//初始化
+	//初始化监听端口
 	memset(&proxy_addr, 0, sizeof(proxy_addr));
 	proxy_port = atoi(argv[1]);
 	proxy_addr.sin_family = AF_INET;
@@ -113,6 +104,7 @@ int main(int argc, char *argv[])
 	}
 	printf("正在监听端口：%d\n", proxy_port);
 
+	//主进程在循环中一直监听端口
 	while (1)
 	{
 		client_len = sizeof(client_addr);
@@ -134,7 +126,7 @@ int main(int argc, char *argv[])
 	printf("接受一个连接来自 %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 	close(listenfd);
 
-	char buf[8192], server_host[2048], server_path[2048], server_port[6];
+	char buf[8192], server_host[2048], server_port[6];
 	int buflen = 8191;
 
 	//读取请求内容
@@ -146,7 +138,7 @@ int main(int argc, char *argv[])
 		{
 			break;
 		}
-		printf("So Far buf:\n%s\n", buf);
+		printf("监听到字符串:\n%s\n", buf);
 	}
 
 	if (n < 0)
@@ -155,6 +147,7 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 
+	//解析请求
 	int rlen = strlen(buf);
 	struct ParsedRequest *req = ParsedRequest_create();
 	if (ParsedRequest_parse(req, buf, rlen) < 0)
@@ -172,15 +165,15 @@ int main(int argc, char *argv[])
 	// 利用库解析请求体
 	ParsedHeader_set(req, "Host", req->host);
 	ParsedHeader_set(req, "Connection", "close");
-	// ParsedHeader_set(req,"Port",req->port);
-	int spportno=80;
-	// printf("%s\n",req->port);
-	
-	if(req->port!=NULL){
+	ParsedHeader_set(req, "Port", req->port);
+
+	int spportno = 80;
+	if (req->port != NULL)
+	{
 		ParsedHeader_set(req, "Port", req->port);
-		strcpy(server_port, req->port);	
+		strcpy(server_port, req->port);
 		spportno = atoi(server_port);
-		req->port=NULL;
+		req->port = NULL;
 	}
 
 	strcpy(server_host, req->host);
@@ -189,12 +182,12 @@ int main(int argc, char *argv[])
 
 	bzero(buf, 8192);
 	ParsedRequest_unparse(req, buf, 8192);
-	printf("收到请求：\n%s\n", buf);
+	printf("解析请求：\n%s\n", buf);
 
 	// printf("%d",spportno);
+	// 连接服务器
 	int spfd = socket_connect(server_host, spportno);
-
-	n=write(spfd, buf, strlen(buf)); // write(fd, char[]*, len);
+	n = write(spfd, buf, strlen(buf)); // write(fd, char[]*, len);
 	if (n < 0)
 	{
 		printf("Error in sending message to url server...\n");
@@ -213,3 +206,4 @@ int main(int argc, char *argv[])
 // GET http://chen.szkxy.net:8888/ HTTP/1.0
 // GET http://www.baidu.com:80/ HTTP/1.0
 // GET http://www.360.com/ HTTP/1.0
+// GET http://120.133.136.23:8886/ HTTP/1.0
