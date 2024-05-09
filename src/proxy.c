@@ -162,11 +162,11 @@ int main(int argc, char *argv[])
 		printf("未实现 (501)\n");
 	}
 
+
 	// 利用库解析请求体
 	ParsedHeader_set(req, "Host", req->host);
 	ParsedHeader_set(req, "Connection", "close");
 	ParsedHeader_set(req, "Port", req->port);
-
 	int spportno = 80;
 	if (req->port != NULL)
 	{
@@ -175,7 +175,6 @@ int main(int argc, char *argv[])
 		spportno = atoi(server_port);
 		req->port = NULL;
 	}
-
 	strcpy(server_host, req->host);
 	req->host = "";
 	req->protocol = "";

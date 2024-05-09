@@ -511,6 +511,8 @@ ParsedRequest_parse(struct ParsedRequest * parse, const char *buf,
 	       parse->path = NULL;
 	       return -1;
 	  }
+     } else {
+          parse->port = "80";
      }
 
    
